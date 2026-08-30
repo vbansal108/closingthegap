@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#12192A" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Closing the Gap" />
+<title>Closing the Gap</title>
+<link rel="manifest" href="manifest.json" />
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #12192A; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #33415F; border-radius: 8px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/plain" id="app-source">
+
+/* ---- Minimal inline icon set (no external icon dependency) ---- */
+function Icon({ size = 16, color = "currentColor", strokeWidth = 2, className = "", children }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+      strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      {children}
+    </svg>
+  );
+}
+const Flame = (p) => <Icon {...p}><path d="M12 2c1 4-3 5-3 9a3 3 0 0 0 6 0c0-1-.5-2-1-2.5 1.5.5 3 2 3 4.5a5 5 0 0 1-10 0c0-4 3-5 3-9 0-1 .5-1.5 2-2z"/></Icon>;
+const Sunrise = (p) => <Icon {...p}><path d="M12 2v5M4.9 10.1l1.4 1.4M2 18h2M20 18h2M17.7 11.5l1.4-1.4M6 18a6 6 0 0 1 12 0M2 22h20"/></Icon>;
+const Footprints = (p) => <Icon {...p}><ellipse cx="8" cy="9" rx="2.3" ry="3.2" transform="rotate(-15 8 9)"/><ellipse cx="16" cy="16" rx="2.3" ry="3.2" transform="rotate(15 16 16)"/></Icon>;
+const HeartHandshake = (p) => <Icon {...p}><path d="M12 21s-7-4.4-9.5-8.8C.6 8.6 2.4 5 6 5c2 0 3.3 1 4 2 1.3-1.7 3.8-2.7 5.8-1.6C19 6.6 19.2 9.8 17 12"/><path d="M8 13l2 2 3-3 3 3"/></Icon>;
+const Waves = (p) => <Icon {...p}><path d="M2 12c1.5-2 3.5-2 5 0s3.5 2 5 0 3.5-2 5 0 3.5 2 5 0"/><path d="M2 18c1.5-2 3.5-2 5 0s3.5 2 5 0 3.5-2 5 0 3.5 2 5 0"/></Icon>;
+const Check = (p) => <Icon {...p}><path d="M20 6 9 17l-5-5"/></Icon>;
+const X = (p) => <Icon {...p}><path d="M18 6 6 18M6 6l12 12"/></Icon>;
+const ChevronDown = (p) => <Icon {...p}><path d="m6 9 6 6 6-6"/></Icon>;
+const ChevronRight = (p) => <Icon {...p}><path d="m9 6 6 6-6 6"/></Icon>;
+const RotateCcw = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></Icon>;
+const Circle = (p) => <Icon {...p}><circle cx="12" cy="12" r="9"/></Icon>;
+const CheckCircle2 = (p) => <Icon {...p}><circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/></Icon>;
+
+
+/* ---- localStorage-backed storage shim, matching the Claude window.storage API shape ---- */
+window.storage = {
+  get: (key) => new Promise((resolve, reject) => {
+    const v = localStorage.getItem(key);
+    if (v === null) { reject(new Error("not found")); return; }
+    resolve({ key, value: v, shared: false });
+  }),
+  set: (key, value) => new Promise((resolve, reject) => {
+    try { localStorage.setItem(key, value); resolve({ key, value, shared: false }); }
+    catch (e) { reject(e); }
+  }),
+  delete: (key) => new Promise((resolve) => {
+    localStorage.removeItem(key); resolve({ key, deleted: true, shared: false });
+  }),
+  list: (prefix) => new Promise((resolve) => {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!prefix || k.startsWith(prefix)) keys.push(k);
+    }
+    resolve({ keys, prefix, shared: false });
+  }),
+};
+
+const { useState, useEffect, useCallback, useMemo } = React;
+
+/* ---------------------------------------------------------
+   Design tokens
+   ink       #12192A  primary background (predawn sky)
+   panel     #1C2740  card / panel background
+   panelLite #24314F  hover / raised panel
+   saffron   #E3A13B  primary accent (chanting beads, marigold)
+   river     #4F92A6  secondary accent (crossing water, "swim not jump")
+   ember     #C96A4C  warning / "jump" accent
+   parchment #F4EEE0  light surfaces, primary text on dark
+   ink-text  #1B1B1B  text on light surfaces
+--------------------------------------------------------- */
+const T = {
+  ink: "#12192A",
+  panel: "#1C2740",
+  panelLite: "#25324E",
+  line: "#33415F",
+  saffron: "#E3A13B",
+  saffronDim: "#8A6B3A",
+  river: "#5C9DAF",
+  ember: "#C96A4C",
+  parchment: "#F4EEE0",
+  parchmentDim: "#C9C2AF",
+  textDark: "#1B1B1B",
+};
+
+const FONT_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+`;
+
+/* ---------------------------------------------------------
+   Date / week helpers
+--------------------------------------------------------- */
+function dateKey(d) {
+  return d.toISOString().slice(0, 10);
+}
+function isoWeekKey(d) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+function monthKey(d) {
+  return d.toISOString().slice(0, 7);
+}
+function friendlyDate(d) {
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+}
+function suggestedStage(hour) {
+  if (hour < 11) return "understand";
+  if (hour < 16) return "step";
+  if (hour < 21) return "atone";
+  return "chant";
+}
+function last7Dates() {
+  const arr = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    arr.push(d);
+  }
+  return arr;
+}
+
+const emptyDay = () => ({
+  understand: { done: false, note: "" },
+  step: { done: false, note: "" },
+  atone: { done: false, note: "" },
+  chant: { done: false, joy: null },
+  gratitude: "",
+  body: { sleep: false, hunger: false, pain: false, fatigue: false },
+  compassion: { done: false, note: "" },
+});
+const emptyWeek = () => ({
+  answers: ["", "", "", "", ""],
+  checkIn: { done: false, who: "" },
+  judgment: "",
+});
+const emptyMonth = () => ({ inconvenient: { done: false, note: "" } });
+const emptyHabits = () => ({ sleep: false, meals: false, movement: false, noExtreme: false });
+
+/* ---------------------------------------------------------
+   Small UI atoms
+--------------------------------------------------------- */
+function Panel({ children, style, className = "" }) {
+  return (
+    <div
+      className={`rounded-2xl p-6 ${className}`}
+      style={{ background: T.panel, border: `1px solid ${T.line}`, ...style }}
+    >
+      {children}
+    </div>
+  );
+}
+function SectionLabel({ children }) {
+  return (
+    <div
+      className="uppercase tracking-widest text-xs mb-3"
+      style={{ color: T.river, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.14em" }}
+    >
+      {children}
+    </div>
+  );
+}
+function Toggle({ checked, onChange, label, accent = T.saffron }) {
+  return (
+    <button
+      onClick={() => onChange(!checked)}
+      className="flex items-center gap-3 text-left w-full py-2 group"
+    >
+      <span
+        className="flex items-center justify-center w-5 h-5 rounded-md shrink-0 transition-colors"
+        style={{
+          border: `1.5px solid ${checked ? accent : T.parchmentDim}`,
+          background: checked ? accent : "transparent",
+        }}
+      >
+        {checked && <Check size={13} strokeWidth={3} color={T.ink} />}
+      </span>
+      <span
+        className="text-sm leading-snug"
+        style={{ color: checked ? T.parchment : T.parchmentDim, fontFamily: "Inter, sans-serif" }}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+function TextField({ value, onChange, placeholder, rows }) {
+  const Tag = rows ? "textarea" : "input";
+  return (
+    <Tag
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
+      className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none"
+      style={{
+        background: T.ink,
+        border: `1px solid ${T.line}`,
+        color: T.parchment,
+        fontFamily: "Inter, sans-serif",
+      }}
+    />
+  );
+}
+function TabButton({ active, onClick, icon: Icon, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm transition-all shrink-0"
+      style={{
+        background: active ? T.saffron : "transparent",
+        color: active ? T.ink : T.parchmentDim,
+        fontFamily: "Inter, sans-serif",
+        fontWeight: active ? 600 : 500,
+        border: `1px solid ${active ? T.saffron : T.line}`,
+      }}
+    >
+      <Icon size={15} />
+      {children}
+    </button>
+  );
+}
+
+/* ---------------------------------------------------------
+   The Daily Cycle wheel (signature element)
+--------------------------------------------------------- */
+const STAGES = [
+  { key: "understand", label: "Understand", sub: "morning", icon: Sunrise, angle: -90 },
+  { key: "step", label: "Step", sub: "through the day", icon: Footprints, angle: 0 },
+  { key: "atone", label: "Atone", sub: "evening", icon: HeartHandshake, angle: 90 },
+  { key: "chant", label: "Chant", sub: "close of day", icon: Flame, angle: 180 },
+];
+
+function CycleWheel({ day, onSelect, selected, suggested }) {
+  const R = 118;
+  const cx = 150, cy = 150;
+  const nodeR = 42;
+
+  const pos = (angle) => {
+    const rad = (angle * Math.PI) / 180;
+    return { x: cx + R * Math.cos(rad), y: cy + R * Math.sin(rad) };
+  };
+
+  const arcPath = (a1, a2) => {
+    const p1 = pos(a1), p2 = pos(a2);
+    const midAngle = (a1 + a2) / 2;
+    const bend = pos(midAngle);
+    const cxp = bend.x + (bend.x - cx) * 0.15;
+    const cyp = bend.y + (bend.y - cy) * 0.15;
+    return `M ${p1.x} ${p1.y} Q ${cxp} ${cyp} ${p2.x} ${p2.y}`;
+  };
+
+  return (
+    <svg viewBox="0 0 300 300" className="w-full max-w-[320px] mx-auto">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="5" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 Z" fill={T.river} />
+        </marker>
+      </defs>
+      {STAGES.map((s, i) => {
+        const next = STAGES[(i + 1) % STAGES.length];
+        return (
+          <path
+            key={s.key}
+            d={arcPath(s.angle, next.angle)}
+            fill="none"
+            stroke={T.river}
+            strokeWidth="1.5"
+            opacity="0.55"
+            markerEnd="url(#arrow)"
+          />
+        );
+      })}
+      <text x={cx} y={cy - 4} textAnchor="middle" style={{ fill: T.parchmentDim, fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em" }}>
+        REPEAT
+      </text>
+      <text x={cx} y={cy + 10} textAnchor="middle" style={{ fill: T.parchmentDim, fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em" }}>
+        DAILY
+      </text>
+      {STAGES.map((s) => {
+        const { x, y } = pos(s.angle);
+        const done = day[s.key]?.done;
+        const isSuggested = suggested === s.key;
+        const isSelected = selected === s.key;
+        const Icon = s.icon;
+        return (
+          <g key={s.key} transform={`translate(${x},${y})`} onClick={() => onSelect(s.key)} className="cursor-pointer">
+            {isSuggested && (
+              <circle r={nodeR + 7} fill="none" stroke={T.saffron} strokeWidth="1" opacity="0.5">
+                <animate attributeName="r" values={`${nodeR + 5};${nodeR + 11};${nodeR + 5}`} dur="2.8s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.55;0.1;0.55" dur="2.8s" repeatCount="indefinite" />
+              </circle>
+            )}
+            <circle
+              r={nodeR}
+              fill={done ? T.saffron : T.panel}
+              stroke={isSelected ? T.parchment : (done ? T.saffron : T.line)}
+              strokeWidth={isSelected ? 2.5 : 1.5}
+            />
+            <foreignObject x={-nodeR} y={-nodeR - 2} width={nodeR * 2} height={nodeR * 2}>
+              <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+                <Icon size={17} color={done ? T.ink : T.parchment} />
+                <span style={{ fontFamily: "Inter, sans-serif", fontSize: 10.5, fontWeight: 600, color: done ? T.ink : T.parchment }}>
+                  {s.label}
+                </span>
+                <span style={{ fontFamily: "Inter, sans-serif", fontSize: 8, color: done ? "#4a3a1a" : T.parchmentDim }}>
+                  {s.sub}
+                </span>
+              </div>
+            </foreignObject>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ---------------------------------------------------------
+   Stage detail editor (below the wheel)
+--------------------------------------------------------- */
+function StageEditor({ stageKey, day, updateDay }) {
+  const stage = STAGES.find((s) => s.key === stageKey);
+  const data = day[stageKey];
+
+  const copy = {
+    understand: {
+      prompt: "Name, honestly, where you stand today — not where you wish you stood.",
+      placeholder: "One sentence on today's state of mind\u2026",
+    },
+    step: {
+      prompt: "Choose one specific act of sense-regulation for today. Not \u201cbe more disciplined\u201d \u2014 something specific.",
+      placeholder: "The one regulated action you're choosing today\u2026",
+    },
+    atone: {
+      prompt: "Name one place today's step fell short. No self-punishment attached to the naming.",
+      placeholder: "Where today fell short\u2026",
+    },
+    chant: {
+      prompt: "Return to your fixed practice. Was it performed as duty, or received as happiness?",
+      placeholder: null,
+    },
+  }[stageKey];
+
+  return (
+    <Panel style={{ marginTop: 20 }}>
+      <div className="flex items-center gap-3 mb-3">
+        <stage.icon size={18} color={T.saffron} />
+        <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 19, color: T.parchment }}>
+          {stage.label} <span style={{ color: T.parchmentDim, fontSize: 13, fontWeight: 400 }}>&middot; {stage.sub}</span>
+        </h3>
+      </div>
+      <p className="text-sm mb-4" style={{ color: T.parchmentDim, fontFamily: "Inter, sans-serif" }}>{copy.prompt}</p>
+
+      <Toggle
+        checked={data.done}
+        onChange={(v) => updateDay((d) => ({ ...d, [stageKey]: { ...d[stageKey], done: v } }))}
+        label={`Mark ${stage.label.toLowerCase()} complete for today`}
+      />
+
+      {stageKey !== "chant" ? (
+        <div className="mt-3">
+          <TextField
+            rows={2}
+            value={data.note}
+            onChange={(v) => updateDay((d) => ({ ...d, [stageKey]: { ...d[stageKey], note: v } }))}
+            placeholder={copy.placeholder}
+          />
+        </div>
+      ) : (
+        <div className="flex gap-2 mt-3">
+          {[
+            { v: "joy", label: "Received as happiness" },
+            { v: "duty", label: "Performed as duty" },
+          ].map((opt) => (
+            <button
+              key={opt.v}
+              onClick={() => updateDay((d) => ({ ...d, chant: { ...d.chant, joy: opt.v } }))}
+              className="flex-1 rounded-lg py-2 text-xs font-medium transition-colors"
+              style={{
+                background: data.joy === opt.v ? T.saffron : T.ink,
+                color: data.joy === opt.v ? T.ink : T.parchmentDim,
+                border: `1px solid ${data.joy === opt.v ? T.saffron : T.line}`,
+                fontFamily: "Inter, sans-serif",
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {stageKey === "chant" && data.joy === "duty" && (
+        <p className="text-xs mt-3" style={{ color: T.ember, fontFamily: "Inter, sans-serif" }}>
+          If happiness has gone missing for several days running, bring it to this week's review.
+        </p>
+      )}
+    </Panel>
+  );
+}
+
+/* ---------------------------------------------------------
+   Sense-Regulation Test (ephemeral tool)
+--------------------------------------------------------- */
+const SENSE_QS = [
+  { k: "use", q: "Use or abuse?", d: "Am I about to use this for its intended purpose, or take more of it than that purpose requires?" },
+  { k: "attach", q: "Use or attachment?", d: "If I were told I could never have this again after today, would I be at peace?" },
+  { k: "given", q: "Given or grasped?", d: "Has this come to me as part of my actual duties and circumstances \u2014 or am I reaching for it precisely because it isn't currently mine?" },
+];
+function SenseTest() {
+  const [answers, setAnswers] = useState({});
+  const answered = Object.keys(answers).length === SENSE_QS.length;
+  const anyNo = Object.values(answers).some((v) => v === false);
+  return (
+    <Panel>
+      <SectionLabel>Bg. 3.34 &middot; run before acting on a strong pull</SectionLabel>
+      <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, color: T.parchment, marginBottom: 14 }}>
+        The Sense-Regulation Test
+      </h3>
+      <div className="space-y-4">
+        {SENSE_QS.map((item) => (
+          <div key={item.k}>
+            <p className="text-sm font-medium mb-1" style={{ color: T.parchment, fontFamily: "Inter, sans-serif" }}>{item.q}</p>
+            <p className="text-xs mb-2" style={{ color: T.parchmentDim, fontFamily: "Inter, sans-serif" }}>{item.d}</p>
+            <div className="flex gap-2">
+              {[["Yes", true], ["No", false]].map(([label, val]) => (
+                <button
+                  key={label}
+                  onClick={() => setAnswers((a) => ({ ...a, [item.k]: val }))}
+                  className="px-4 py-1.5 rounded-full text-xs font-semibold"
+                  style={{
+                    background: answers[item.k] === val ? T.river : "transparent",
+                    color: answers[item.k] === val ? T.ink : T.parchmentDim,
+                    border: `1px solid ${answers[item.k] === val ? T.river : T.line}`,
+                    fontFamily: "Inter, sans-serif",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {answered && (
+        <div
+          className="mt-5 rounded-xl p-4 flex items-start gap-3"
+          style={{ background: anyNo ? "#3a2620" : "#1e3327", border: `1px solid ${anyNo ? T.ember : T.river}` }}
+        >
+          {anyNo ? <X size={18} color={T.ember} className="shrink-0 mt-0.5" /> : <Check size={18} color={T.river} className="shrink-0 mt-0.5" />}
+          <p className="text-sm" style={{ color: T.parchment, fontFamily: "Inter, sans-serif" }}>
+            {anyNo
+              ? "Pause the action. A single honest \u201cno\u201d is sufficient reason to stop \u2014 not necessarily to abandon it permanently, but to wait."
+              : "Proceed. All three checks came back clear \u2014 use, not abuse or attachment."}
+          </p>
+        </div>
+      )}
+      <button
+        onClick={() => setAnswers({})}
+        className="mt-4 flex items-center gap-1.5 text-xs"
+        style={{ color: T.parchmentDim, fontFamily: "Inter, sans-serif" }}
+      >
+        <RotateCcw size={12} /> Reset
+      </button>
+    </Panel>
+  );
+}
+
+/* ---------------------------------------------------------
+   Jump-or-Swim diagnostic (ephemeral tool)
+--------------------------------------------------------- */
+const DIAG_ROWS = [
+  ["Made in a single burst of inspiration, no waiting period.", "Confirmed after a fixed waiting period, unchanged."],
+  ["Motivated partly by how it will look to others.", "Motivated by the specific duty or need in front of you."],
+  ["Involves discarding an existing duty or relationship abruptly.", "Builds on existing duties rather than replacing them."],
+  ["Comes with a felt need to convince others it is right.", "Can be described plainly, without needing to persuade."],
+  ["The body's objections are being treated as obstacles.", "The body's objections have been checked and accounted for."],
+];
+function JumpSwimDiagnostic() {
+  const [picks, setPicks] = useState({});
+  const jumpCount = Object.values(picks).filter((v) => v === "jump").length;
+  const answeredAll = Object.keys(picks).length === DIAG_ROWS.length;
+  return (
+    <Panel>
+      <SectionLabel>Run before any decision about practice, service, or renunciation</SectionLabel>
+      <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, color: T.parchment, marginBottom: 14 }}>
+        Jumping, or Swimming?
+      </h3>
+      <div className="space-y-3">
+        {DIAG_ROWS.map((row, i) => (
+          <div key={i} className="grid grid-cols-2 gap-2">
+            {row.map((text, j) => {
+              const side = j === 0 ? "jump" : "swim";
+              const active = picks[i] === side;
+              return (
+                <button
+                  key={j}
+                  onClick={() => setPicks((p) => ({ ...p, [i]: side }))}
+                  className="text-left rounded-lg p-3 text-xs leading-snug transition-colors"
+                  style={{
+                    background: active ? (side === "jump" ? "#3a2620" : "#1e3327") : T.ink,
+                    border: `1px solid ${active ? (side === "jump" ? T.ember : T.river) : T.line}`,
+                    color: active ? T.parchment : T.parchmentDim,
+                    fontFamily: "Inter, sans-serif",
+                  }}
+                >
+                  {text}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      {answeredAll && (
+        <div
+          className="mt-5 rounded-xl p-4"
+          style={{ background: jumpCount >= 3 ? "#3a2620" : "#1e3327", border: `1px solid ${jumpCount >= 3 ? T.ember : T.river}` }}
+        >
+          <p className="text-sm" style={{ color: T.parchment, fontFamily: "Inter, sans-serif" }}>
+            {jumpCount} of 5 marks toward jumping.{" "}
+            {jumpCount >= 3
+              ? "Apply the seventy-two-hour rule before acting, regardless of how compelling the decision feels right now."
+              : "The ground beneath this decision looks steady."}
+          </p>
+        </div>
+      )}
+      <button
+        onClick={() => setPicks({})}
+        className="mt-4 flex items-center gap-1.5 text-xs"
+        style={{ color: T.parchmentDim, fontFamily: "Inter, sans-serif" }}
+      >
+        <RotateCcw size={12} /> Reset
+      </button>
+    </Panel>
+  );
+}
+
+/* ---------------------------------------------------------
+   Reference accordion
+--------------------------------------------------------- */
+const PROTOCOLS = [
+  ["A sudden pull to take on a new vow, fast, or austerity \u2014 especially right after inspiration.",
+   "Wait seventy-two hours before committing. Write down the specific capability required and check it against your last thirty days, not your aspiration."],
+  ["Being offered, or wanting to offer yourself for, a teaching or leadership role.",
+   "Before accepting, name in writing three qualities you have not yet demonstrated under pressure. Accept only alongside a mentor who will tell you the truth."],
+  ["Resentment, exhaustion, or going through the motions in service you once found joyful.",
+   "Treat this as the burnout warning, not a character flaw. Reduce your commitment by a fixed amount this week, and name the reduction to someone else."],
+  ["Thinking of your practice or renunciation in comparative terms \u2014 more advanced than others.",
+   "Run the transcending-versus-transgressing test. Comparative ranking is close to the surest sign the balcony has been imagined rather than reached."],
+];
+function Accordion({ title, children, defaultOpen }) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  return (
+    <Panel>
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between">
+        <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 19, color: T.parchment }}>{title}</h3>
+        {open ? <ChevronDown size={18} color={T.parchmentDim} /> : <ChevronRight size={18} color={T.parchmentDim} />}
+      </button>
+      {open && <div className="mt-4">{children}</div>}
+    </Panel>
+  );
+}
+
+/* ---------------------------------------------------------
+   Main App
+--------------------------------------------------------- */
+function App() {
+  const today = useMemo(() => new Date(), []);
+  const dKey = dateKey(today);
+  const wKey = isoWeekKey(today);
+  const mKey = monthKey(today);
+  const suggested = suggestedStage(today.getHours());
+
+  const [loaded, setLoaded] = useState(false);
+  const [tab, setTab] = useState("today");
+  const [day, setDay] = useState(emptyDay());
+  const [week, setWeek] = useState(emptyWeek());
+  const [month, setMonth] = useState(emptyMonth());
+  const [habits, setHabits] = useState(emptyHabits());
+  const [streak, setStreak] = useState([]); // [{date, chant}]
+  const [selectedStage, setSelectedStage] = useState(suggested);
+  const [saveError, setSaveError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [dRes, wRes, mRes, hRes] = await Promise.allSettled([
+          window.storage.get(`day:${dKey}`),
+          window.storage.get(`week:${wKey}`),
+          window.storage.get(`month:${mKey}`),
+          window.storage.get(`habits:baseline`),
+        ]);
+        if (cancelled) return;
+        if (dRes.status === "fulfilled" && dRes.value) setDay(JSON.parse(dRes.value.value));
+        if (wRes.status === "fulfilled" && wRes.value) setWeek(JSON.parse(wRes.value.value));
+        if (mRes.status === "fulfilled" && mRes.value) setMonth(JSON.parse(mRes.value.value));
+        if (hRes.status === "fulfilled" && hRes.value) setHabits(JSON.parse(hRes.value.value));
+
+        const days = last7Dates();
+        const results = await Promise.allSettled(
+          days.map((d) => window.storage.get(`day:${dateKey(d)}`))
+        );
+        const s = days.map((d, i) => {
+          const r = results[i];
+          let chant = false;
+          if (r.status === "fulfilled" && r.value) {
+            try { chant = !!JSON.parse(r.value.value).chant?.done; } catch (e) {}
+          }
+          return { date: d, chant };
+        });
+        if (!cancelled) setStreak(s);
+      } catch (e) {
+        // best-effort; app still works without persistence
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [dKey, wKey, mKey]);
+
+  const persist = useCallback(async (key, value) => {
+    try {
+      const res = await window.storage.set(key, JSON.stringify(value));
+      if (!res) setSaveError(true);
+    } catch (e) {
+      setSaveError(true);
+    }
+  }, []);
+
+  const updateDay = useCallback((updater) => {
+    setDay((prev) => {
+      const next = updater(prev);
+      persist(`day:${dKey}`, next);
+      setStreak((s) => s.map((entry) =>
+        dateKey(entry.date) === dKey ? { ...entry, chant: !!next.chant?.done } : entry
+      ));
+      return next;
+    });
+  }, [dKey, persist]);
+
+  const updateWeek = useCallback((updater) => {
+    setWeek((prev) => {
+      const next = updater(prev);
+      persist(`week:${wKey}`, next);
+      return next;
+    });
+  }, [wKey, persist]);
+
+  const updateMonth = useCallback((updater) => {
+    setMonth((prev) => {
+      const next = updater(prev);
+      persist(`month:${mKey}`, next);
+      return next;
+    });
+  }, [mKey, persist]);
+
+  const updateHabits = useCallback((updater) => {
+    setHabits((prev) => {
+      const next = updater(prev);
+      persist(`habits:baseline`, next);
+      return next;
+    });
+  }, [persist]);
+
+  const doneCount = [day.chant.done, day.understand.done, day.step.done, day.atone.done, day.compassion.done].filter(Boolean).length;
+
+  return (
+    <div style={{ background: T.ink, minHeight: "100vh", fontFamily: "Inter, sans-serif" }}>
+      <style>{FONT_CSS}</style>
+
+      <div className="max-w-3xl mx-auto px-5 py-10">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-1">
+            <Waves size={16} color={T.river} />
+            <span style={{ color: T.river, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: "0.12em" }}>
+              SWUM, NOT JUMPED
+            </span>
+          </div>
+          <h1 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 40, color: T.parchment, lineHeight: 1.05 }}>
+            Closing the Gap
+          </h1>
+          <p style={{ color: T.parchmentDim, fontSize: 14, marginTop: 6 }}>
+            {friendlyDate(today)} &middot; a companion to <em>Finding the Gap</em>
+          </p>
+        </div>
+
+        {/* Streak */}
+        <div className="flex items-center gap-2 mb-8">
+          {streak.map((entry, i) => (
+            <div key={i} className="flex flex-col items-center gap-1.5">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center"
+                style={{
+                  background: entry.chant ? T.saffron : "transparent",
+                  border: `1.5px solid ${entry.chant ? T.saffron : T.line}`,
+                }}
+              >
+                {entry.chant && <Flame size={12} color={T.ink} />}
+              </div>
+              <span style={{ fontSize: 9, color: T.parchmentDim, fontFamily: "'IBM Plex Mono', monospace" }}>
+                {entry.date.toLocaleDateString(undefined, { weekday: "narrow" })}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-8 overflow-x-auto pb-1">
+          <TabButton active={tab === "today"} onClick={() => setTab("today")} icon={Sunrise}>Today</TabButton>
+          <TabButton active={tab === "tests"} onClick={() => setTab("tests")} icon={Waves}>Tests</TabButton>
+          <TabButton active={tab === "weekly"} onClick={() => setTab("weekly")} icon={HeartHandshake}>Weekly</TabButton>
+          <TabButton active={tab === "reference"} onClick={() => setTab("reference")} icon={Circle}>Reference</TabButton>
+        </div>
+
+        {/* TODAY */}
+        {tab === "today" && (
+          <div>
+            <Panel>
+              <div className="flex items-center justify-between mb-2">
+                <SectionLabel>The Four-Stage Daily Cycle</SectionLabel>
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: T.saffron }}>
+                  {doneCount}/5 today
+                </span>
+              </div>
+              <CycleWheel day={day} onSelect={setSelectedStage} selected={selectedStage} suggested={suggested} />
+              <p className="text-center text-xs mt-2" style={{ color: T.parchmentDim }}>
+                Suggested now: <span style={{ color: T.saffron }}>{STAGES.find(s => s.key === suggested).label}</span> &middot; tap any node to log it
+              </p>
+            </Panel>
+
+            {selectedStage && <StageEditor stageKey={selectedStage} day={day} updateDay={updateDay} />}
+
+            <Panel style={{ marginTop: 20 }}>
+              <SectionLabel>Body Check</SectionLabel>
+              <p className="text-sm mb-3" style={{ color: T.parchmentDim }}>
+                Name the alarm specifically. Rest, eat, or seek care without treating the interruption as failure.
+              </p>
+              <div className="grid grid-cols-2 gap-x-4">
+                <Toggle checked={day.body.sleep} onChange={(v) => updateDay(d => ({ ...d, body: { ...d.body, sleep: v } }))} label="Under-slept" accent={T.ember} />
+                <Toggle checked={day.body.hunger} onChange={(v) => updateDay(d => ({ ...d, body: { ...d.body, hunger: v } }))} label="Hungry / skipped a meal" accent={T.ember} />
+                <Toggle checked={day.body.pain} onChange={(v) => updateDay(d => ({ ...d, body: { ...d.body, pain: v } }))} label="In pain" accent={T.ember} />
+                <Toggle checked={day.body.fatigue} onChange={(v) => updateDay(d => ({ ...d, body: { ...d.body, fatigue: v } }))} label="Fatigued" accent={T.ember} />
+              </div>
+            </Panel>
+
+            <Panel style={{ marginTop: 20 }}>
+              <SectionLabel>Compassion &middot; today's chosen act</SectionLabel>
+              <Toggle
+                checked={day.compassion.done}
+                onChange={(v) => updateDay(d => ({ ...d, compassion: { ...d.compassion, done: v } }))}
+                label="Performed one act of service or kindness I did not have to perform"
+              />
+              <div className="mt-2">
+                <TextField
+                  value={day.compassion.note}
+                  onChange={(v) => updateDay(d => ({ ...d, compassion: { ...d.compassion, note: v } }))}
+                  placeholder="What, briefly…"
+                />
+              </div>
+            </Panel>
+
+            <Panel style={{ marginTop: 20 }}>
+              <SectionLabel>Before sleep</SectionLabel>
+              <p className="text-sm mb-2" style={{ color: T.parchmentDim }}>One line of gratitude that is not about your own performance.</p>
+              <TextField value={day.gratitude} onChange={(v) => updateDay(d => ({ ...d, gratitude: v }))} placeholder="Today I'm grateful for…" />
+            </Panel>
+          </div>
+        )}
+
+        {/* TESTS */}
+        {tab === "tests" && (
+          <div className="space-y-5">
+            <SenseTest />
+            <JumpSwimDiagnostic />
+          </div>
+        )}
+
+        {/* WEEKLY */}
+        {tab === "weekly" && (
+          <div className="space-y-5">
+            <Panel>
+              <SectionLabel>Week {wKey} &middot; fifteen minutes, away from the day's pace</SectionLabel>
+              <div className="space-y-4 mt-2">
+                {[
+                  "Where this week did I try to be perfect, or get something right, more than the situation required? What was I telling myself?",
+                  "Where did I feel resistance to something or someone? What, specifically \u2014 and where in my body did I feel it?",
+                  "What did I tell myself about myself this week? Write the self-critical lines exactly as they occurred.",
+                  "What meaning did I attach to other people's actions or events this week? Which was justified by evidence, and which did my mind fill in?",
+                  "Bonus: what does this week's pattern suggest about my predominant doshas?",
+                ].map((q, i) => (
+                  <div key={i}>
+                    <p className="text-sm mb-1.5" style={{ color: T.parchment }}>{i + 1}. {q}</p>
+                    <TextField rows={2} value={week.answers[i]} onChange={(v) => updateWeek(w => {
+                      const answers = [...w.answers]; answers[i] = v; return { ...w, answers };
+                    })} placeholder="Write here…" />
+                  </div>
+                ))}
+              </div>
+            </Panel>
+
+            <Panel>
+              <SectionLabel>Compassion &middot; weekly</SectionLabel>
+              <Toggle
+                checked={week.checkIn.done}
+                onChange={(v) => updateWeek(w => ({ ...w, checkIn: { ...w.checkIn, done: v } }))}
+                label="Checked in \u2014 by presence, not only message \u2014 with someone struggling"
+              />
+              <div className="mt-2 mb-4">
+                <TextField value={week.checkIn.who} onChange={(v) => updateWeek(w => ({ ...w, checkIn: { ...w.checkIn, who: v } }))} placeholder="Who…" />
+              </div>
+              <p className="text-sm mb-1.5" style={{ color: T.parchment }}>A judgment I formed about someone's character or motives \u2014 what I actually know vs. what I assumed:</p>
+              <TextField rows={2} value={week.judgment} onChange={(v) => updateWeek(w => ({ ...w, judgment: v }))} placeholder="Write here…" />
+            </Panel>
+
+            <Panel>
+              <SectionLabel>Compassion &middot; once a month ({mKey})</SectionLabel>
+              <Toggle
+                checked={month.inconvenient.done}
+                onChange={(v) => updateMonth(m => ({ ...m, inconvenient: { ...m.inconvenient, done: v } }))}
+                label="One act of service inconvenient enough I wouldn't have chosen it as a favorite way to spend the time"
+              />
+              <div className="mt-2">
+                <TextField value={month.inconvenient.note} onChange={(v) => updateMonth(m => ({ ...m, inconvenient: { ...m.inconvenient, note: v } }))} placeholder="What, briefly…" />
+              </div>
+            </Panel>
+          </div>
+        )}
+
+        {/* REFERENCE */}
+        {tab === "reference" && (
+          <div className="space-y-5">
+            <Accordion title="Catching the Jump: If \u2014 Then" defaultOpen>
+              <div className="space-y-3">
+                {PROTOCOLS.map((row, i) => (
+                  <div key={i} className="rounded-xl p-4" style={{ background: T.ink, border: `1px solid ${T.line}` }}>
+                    <p className="text-xs uppercase tracking-wide mb-1.5" style={{ color: T.ember, fontFamily: "'IBM Plex Mono', monospace" }}>If</p>
+                    <p className="text-sm mb-3" style={{ color: T.parchment }}>{row[0]}</p>
+                    <p className="text-xs uppercase tracking-wide mb-1.5" style={{ color: T.river, fontFamily: "'IBM Plex Mono', monospace" }}>Then</p>
+                    <p className="text-sm" style={{ color: T.parchment }}>{row[1]}</p>
+                  </div>
+                ))}
+              </div>
+            </Accordion>
+
+            <Accordion title="Body Protocol \u2014 Baseline Habits">
+              <p className="text-sm mb-3" style={{ color: T.parchmentDim }}>Ongoing commitments, checked once and remembered \u2014 not reset daily.</p>
+              <Toggle checked={habits.sleep} onChange={(v) => updateHabits(h => ({ ...h, sleep: v }))} label="Consistent sleep and wake time, seven days a week" />
+              <Toggle checked={habits.meals} onChange={(v) => updateHabits(h => ({ ...h, meals: v }))} label="Regular meal times, no skipping and over-eating later" />
+              <Toggle checked={habits.movement} onChange={(v) => updateHabits(h => ({ ...h, movement: v }))} label="Some daily physical movement" />
+              <Toggle checked={habits.noExtreme} onChange={(v) => updateHabits(h => ({ ...h, noExtreme: v }))} label="Neither sleep nor food treated as reward or weakness" />
+            </Accordion>
+
+            <Accordion title="A Sample Day">
+              <div className="space-y-2.5">
+                {[
+                  ["Early morning", "Chanting before other input; one-sentence Understand note"],
+                  ["Mid-morning", "Body check: sleep, hunger, pain, fatigue logged honestly"],
+                  ["During work", "The day's chosen Step; sense-regulation test as needed"],
+                  ["Afternoon", "The day's act of chosen service, performed rather than intended"],
+                  ["Evening", "Atonement line and gratitude line"],
+                  ["Before sleep", "Closing chanting, noticed rather than merely completed"],
+                  ["Weekly", "Fifteen-minute review; compassion check-in; diagnostic as needed"],
+                ].map(([time, text], i) => (
+                  <div key={i} className="flex gap-3">
+                    <span className="w-28 shrink-0 text-xs" style={{ color: T.saffron, fontFamily: "'IBM Plex Mono', monospace" }}>{time}</span>
+                    <span className="text-sm" style={{ color: T.parchment }}>{text}</span>
+                  </div>
+                ))}
+              </div>
+            </Accordion>
+          </div>
+        )}
+
+        {saveError && (
+          <p className="text-xs mt-6 text-center" style={{ color: T.ember }}>
+            Changes aren't saving right now \u2014 they'll last for this session only.
+          </p>
+        )}
+
+        <p className="text-center text-xs mt-10" style={{ color: T.parchmentDim, fontFamily: "'IBM Plex Mono', monospace" }}>
+          FINDING THE GAP &middot; CLOSING THE GAP
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+
+</script>
+<script>
+  (function () {
+    var code = document.getElementById("app-source").textContent;
+    var output = Babel.transform(code, { presets: [["react", { runtime: "classic" }]] }).code;
+    var s = document.createElement("script");
+    s.textContent = output;
+    document.body.appendChild(s);
+  })();
+</script>
+</body>
+</html>

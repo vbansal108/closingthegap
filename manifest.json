@@ -1,0 +1,10 @@
+{
+  "name": "Closing the Gap",
+  "short_name": "Closing the Gap",
+  "description": "A daily companion for the Finding the Gap / Closing the Gap framework",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#12192A",
+  "theme_color": "#12192A",
+  "icons": []
+}
